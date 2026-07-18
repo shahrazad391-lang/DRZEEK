@@ -39,6 +39,28 @@
             padding: 2px 4px;
         }
         .name-cell { font-weight: 700; color: #1d4ed8; }
+        #voiceBtn {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            transition: background-color 0.15s, box-shadow 0.15s, transform 0.1s;
+        }
+        #voiceBtn.voice-listening {
+            background-color: #dc2626 !important;
+            box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.35);
+            animation: voicePulse 1s ease-in-out infinite;
+        }
+        #voiceBtn.voice-ready-answer {
+            background-color: #7c3aed !important;
+        }
+        #voiceBtn.voice-busy {
+            opacity: 0.85;
+            cursor: wait;
+        }
+        @keyframes voicePulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.04); }
+        }
 
         /* ── Realistic dental arch ── */
         .dental-arch {
@@ -239,16 +261,28 @@
     <!-- Main Controls -->
     <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-wrap gap-4 items-center no-print">
         <button onclick="addManualRow()" class="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700" data-i18n="addManual">إضافة سجل يدوي</button>
-        <button id="voiceBtn" onclick="startVoiceInput()" class="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-purple-700">
-            <i class="fa-solid fa-microphone ml-2"></i><span data-i18n="voiceInput">إدخال صوتي (Gemini)</span>
+        <button id="voiceBtn" type="button"
+            class="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-purple-700 select-none"
+            title="Push to talk"
+            onmousedown="voicePttDown(event)"
+            onmouseup="voicePttUp(event)"
+            onmouseleave="voicePttUp(event)"
+            ontouchstart="voicePttDown(event)"
+            ontouchend="voicePttUp(event)"
+            ontouchcancel="voicePttUp(event)">
+            <i id="voiceBtnIcon" class="fa-solid fa-microphone ml-2"></i>
+            <span id="voiceBtnLabel" data-i18n="voiceHold">اضغط مطولاً للإجابة · اضغط للبدء</span>
         </button>
+        <button id="voiceCancelBtn" type="button" onclick="cancelVoiceSession()"
+            class="hidden bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-3 rounded-xl font-bold text-sm"
+            data-i18n="voiceCancel">إلغاء الصوت</button>
         <select id="sortOrder" onchange="renderSchedule()" class="p-3 rounded-xl border border-slate-300">
             <option value="asc" data-i18n="sortAsc">الاسم (أ-ي)</option>
             <option value="desc" data-i18n="sortDesc">الاسم (ي-أ)</option>
         </select>
         <input type="file" id="fileInput" class="hidden" accept=".csv,text/csv" onchange="importCSV(this)">
         <button onclick="document.getElementById('fileInput').click()" class="bg-slate-600 text-white px-6 py-3 rounded-xl" data-i18n="importCsv">استيراد CSV</button>
-        <span id="voiceStatus" class="text-sm text-purple-700 font-medium"></span>
+        <span id="voiceStatus" class="text-sm text-purple-700 font-medium max-w-md"></span>
         <span class="text-xs text-slate-400" data-i18n="editHint">انقر على خلية لتعديلها · Enter للحفظ · Esc للإلغاء</span>
     </div>
 
@@ -406,7 +440,11 @@
             appTitle: 'عيادة الأسنان الذكية',
             exportExcel: 'تصدير Excel',
             addManual: 'إضافة سجل يدوي',
-            voiceInput: 'إدخال صوتي (Gemini)',
+            voiceInput: 'إدخال صوتي موجّه',
+            voiceHold: 'اضغط للبدء · اضغط مطولاً للإجابة',
+            voiceHoldAnswer: 'اضغط مطولاً وأجب…',
+            voiceListeningLabel: 'جاري الاستماع… أفلت عند الانتهاء',
+            voiceCancel: 'إلغاء الصوت',
             sortAsc: 'الاسم (أ-ي)',
             sortDesc: 'الاسم (ي-أ)',
             importCsv: 'استيراد CSV',
@@ -429,10 +467,22 @@
             promptDue: 'المستحقات:', promptPaid: 'المدفوعات:',
             confirmDelete: 'حذف هذا السجل؟',
             voiceUnsupported: 'الإدخال الصوتي غير مدعوم. استخدم Chrome.',
-            voiceListening: '🎤 جاري الاستماع... تكلم بيانات المريض',
-            voiceParsing: '⏳ Gemini يحلّل البيانات...',
-            voiceError: 'تعذر التعرف على الصوت',
-            voiceDone: 'تم حفظ الإدخال الصوتي',
+            voiceListening: '🔴 جاري الاستماع… تكلم الآن ثم أفلت الزر',
+            voiceParsing: '⏳ جاري فهم الإجابة…',
+            voiceError: 'تعذر التعرف على الصوت — أعد المحاولة مع الضغط المطوّل',
+            voiceDone: 'تم حفظ السجل',
+            voiceAskName: 'ما اسم المريض؟',
+            voiceAskPhone: 'ما رقم الهاتف؟ قل تخطي إن لم يوجد.',
+            voiceAskProc: 'ما الإجراء الذي تم؟ مثل حشو أو خلع أو تنظيف.',
+            voiceAskDue: 'كم المبلغ المستحق؟',
+            voiceAskPaid: 'كم المبلغ المدفوع؟',
+            voiceGot: 'تم تسجيل',
+            voiceSkipped: 'تم التخطي',
+            voiceHoldToAnswer: 'اضغط مطولاً على زر الميكروفون وأجب، ثم أفلت',
+            voiceStarting: 'بدء المساعد الصوتي…',
+            voiceCancelled: 'تم إلغاء الإدخال الصوتي',
+            voiceProcessing: 'جاري حفظ السجل…',
+            voiceEmptyAnswer: 'لم أسمع إجابة — اضغط مطولاً وحاول مرة أخرى',
             markTeethHint: '— انقر أيقونة الأسنان لتحديد الأسنان المصابة',
             noApiKey: 'أدخل مفتاح Gemini API أولاً (زر مفتاح Gemini أعلى الصفحة)',
             apiError: 'خطأ من Gemini API',
@@ -468,7 +518,11 @@
             appTitle: 'Smart Dental Clinic',
             exportExcel: 'Export Excel',
             addManual: 'Add Manual Record',
-            voiceInput: 'Voice Input (Gemini)',
+            voiceInput: 'Guided voice input',
+            voiceHold: 'Tap to start · hold to answer',
+            voiceHoldAnswer: 'Hold & answer…',
+            voiceListeningLabel: 'Listening… release when done',
+            voiceCancel: 'Cancel voice',
             sortAsc: 'Name (A-Z)', sortDesc: 'Name (Z-A)',
             importCsv: 'Import CSV',
             colId: 'ID', colName: 'Patient Name', colPhone: 'Phone',
@@ -490,10 +544,22 @@
             promptDue: 'Amount due:', promptPaid: 'Amount paid:',
             confirmDelete: 'Delete this record?',
             voiceUnsupported: 'Voice input not supported. Use Chrome.',
-            voiceListening: '🎤 Listening... speak patient details',
-            voiceParsing: '⏳ Gemini is parsing the data...',
-            voiceError: 'Could not recognize speech',
-            voiceDone: 'Voice input saved',
+            voiceListening: '🔴 Listening… speak now, then release',
+            voiceParsing: '⏳ Understanding your answer…',
+            voiceError: 'Could not recognize speech — hold and try again',
+            voiceDone: 'Record saved',
+            voiceAskName: "What is the patient's name?",
+            voiceAskPhone: 'What is the phone number? Say skip if none.',
+            voiceAskProc: 'What procedure was performed? For example filling, extraction, or cleaning.',
+            voiceAskDue: 'What is the amount due?',
+            voiceAskPaid: 'What amount was paid?',
+            voiceGot: 'Got',
+            voiceSkipped: 'Skipped',
+            voiceHoldToAnswer: 'Hold the microphone button, answer, then release',
+            voiceStarting: 'Starting voice assistant…',
+            voiceCancelled: 'Voice input cancelled',
+            voiceProcessing: 'Saving the record…',
+            voiceEmptyAnswer: 'No answer heard — hold the button and try again',
             markTeethHint: '— click the teeth icon to mark affected teeth',
             noApiKey: 'Enter your Gemini API key first (Gemini Key button in the header)',
             apiError: 'Gemini API error',
@@ -752,6 +818,7 @@
         });
         refreshApiStatus();
         renderSchedule();
+        if (typeof updateVoiceButtonUI === 'function') updateVoiceButtonUI();
     }
 
     // ── Realistic tooth SVG paths (viewBox 0 0 40 56) ─────────────────
@@ -1445,29 +1512,13 @@ Rules: no long intro, no diagnosis, no drug dosages except "as prescribed". If p
             setVoiceStatus._t = setTimeout(() => {
                 if (status.textContent === msg) status.textContent = '';
             }, clearMs);
+        } else {
+            clearTimeout(setVoiceStatus._t);
         }
-    }
-
-    function buildPatientPrompt(spokenText) {
-        return `You are a dental clinic assistant. Extract patient visit data from the spoken/transcribed text.
-Return ONLY valid JSON with these fields:
-{
-  "name": "patient full name",
-  "phone": "phone number or empty string",
-  "proc": "procedure in ${lang === 'ar' ? 'Arabic' : 'English'} (e.g. ${lang === 'ar' ? 'خلع/حشو/تنظيف/فحص' : 'extraction/filling/cleaning/exam'})",
-  "due": number (amount owed, 0 if unknown),
-  "paid": number (amount paid, 0 if unknown),
-  "teeth": [FDI tooth numbers as integers if mentioned, else []]
-}
-FDI examples: upper right third molar=18, upper right central=11, upper left central=21, lower left central=31, lower right central=41.
-If name is missing use "${lang === 'ar' ? 'مريض' : 'Patient'}".
-Spoken text:
-"""${spokenText}"""`;
     }
 
     function parseGeminiJson(raw) {
         let s = (raw || '').trim();
-        // strip markdown fences if any
         s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
         const start = s.indexOf('{');
         const end = s.lastIndexOf('}');
@@ -1475,78 +1526,408 @@ Spoken text:
         return JSON.parse(s);
     }
 
-    // ── Voice → SpeechRecognition → Gemini parse ─────────────────────
-    function startVoiceInput() {
-        if (!getApiKey()) {
-            setVoiceStatus(t('noApiKey'), 8000);
-            document.getElementById('apiPanel').classList.remove('hidden');
-            changingKey = false;
-            refreshApiStatus();
-            return;
+    // ── Guided Push-to-Talk voice assistant ────────────────────────────
+    // Press once (idle) → start conversation + TTS question
+    // Hold while answering → SpeechRecognition; release → process field
+    const VOICE_STEPS = [
+        { field: 'name', askKey: 'voiceAskName', required: true },
+        { field: 'phone', askKey: 'voiceAskPhone', required: false },
+        { field: 'proc', askKey: 'voiceAskProc', required: false },
+        { field: 'due', askKey: 'voiceAskDue', required: false, numeric: true },
+        { field: 'paid', askKey: 'voiceAskPaid', required: false, numeric: true }
+    ];
+
+    const voiceSession = {
+        active: false,
+        stepIndex: 0,
+        draft: {},
+        phase: 'idle', // idle | speaking | awaiting_answer | listening | processing
+        holding: false,
+        recognition: null,
+        transcript: '',
+        pressToken: 0
+    };
+
+    function speechLang() {
+        return lang === 'ar' ? 'ar-SA' : 'en-US';
+    }
+
+    function updateVoiceButtonUI() {
+        const btn = document.getElementById('voiceBtn');
+        const label = document.getElementById('voiceBtnLabel');
+        const icon = document.getElementById('voiceBtnIcon');
+        const cancel = document.getElementById('voiceCancelBtn');
+        if (!btn || !label) return;
+
+        btn.classList.remove('voice-listening', 'voice-ready-answer', 'voice-busy', 'bg-purple-600');
+        if (cancel) cancel.classList.toggle('hidden', !voiceSession.active);
+
+        if (voiceSession.phase === 'listening') {
+            btn.classList.add('voice-listening');
+            label.textContent = t('voiceListeningLabel');
+            if (icon) icon.className = 'fa-solid fa-microphone-lines ml-2';
+        } else if (voiceSession.phase === 'awaiting_answer') {
+            btn.classList.add('voice-ready-answer');
+            label.textContent = t('voiceHoldAnswer');
+            if (icon) icon.className = 'fa-solid fa-microphone ml-2';
+        } else if (voiceSession.phase === 'speaking' || voiceSession.phase === 'processing') {
+            btn.classList.add('voice-busy', 'bg-purple-600');
+            label.textContent = voiceSession.phase === 'speaking' ? '…' : t('voiceParsing');
+            if (icon) icon.className = 'fa-solid fa-spinner fa-spin ml-2';
+        } else {
+            btn.classList.add('bg-purple-600');
+            label.textContent = t('voiceHold');
+            if (icon) icon.className = 'fa-solid fa-microphone ml-2';
         }
+    }
+
+    function stopSpeechSynth() {
+        try {
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+        } catch (e) { /* ignore */ }
+    }
+
+    function speakText(text) {
+        return new Promise((resolve) => {
+            if (!window.speechSynthesis || !text) {
+                resolve();
+                return;
+            }
+            stopSpeechSynth();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = speechLang();
+            u.rate = lang === 'ar' ? 0.95 : 1;
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                resolve();
+            };
+            u.onend = finish;
+            u.onerror = finish;
+            // Fallback if onend never fires
+            setTimeout(finish, Math.min(15000, 2000 + text.length * 80));
+            window.speechSynthesis.speak(u);
+        });
+    }
+
+    function isSkipPhrase(text) {
+        const s = (text || '').trim().toLowerCase();
+        if (!s) return true;
+        return /^(skip|none|no|nope|nothing|empty|n\/a|na|لا|لا يوجد|بدون|تخطي|تخطى|ما في|مفيش|لا شيء|مش موجود|بدون رقم)$/i.test(s)
+            || /(skip|no phone|no number|تخطي|بدون هاتف|ما في رقم)/i.test(s);
+    }
+
+    function extractSpokenNumber(text) {
+        if (!text) return null;
+        // Western + Arabic-Indic digits
+        const normalized = String(text)
+            .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+            .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+        const m = normalized.match(/(\d+(?:[.,]\d+)?)/);
+        if (m) return parseFloat(m[1].replace(',', '.'));
+        return null;
+    }
+
+    async function parseFieldWithGemini(field, spokenText) {
+        if (!getApiKey()) return null;
+        try {
+            const prompt = `You extract one dental clinic form field from speech.
+Field: "${field}" (name|phone|proc|due|paid).
+Language for text answers: ${lang === 'ar' ? 'Arabic' : 'English'}.
+Spoken: """${spokenText}"""
+Return ONLY JSON: {"value": <string or number>, "skip": <boolean>}
+Rules:
+- If user skips / has no value, skip=true and value empty or 0.
+- due/paid must be numbers (0 if unknown).
+- proc: short procedure label (extraction/filling/cleaning/exam or Arabic equivalents).
+- name: person name only.
+- phone: digits string or empty.`;
+            const raw = await callGemini(prompt, { json: true });
+            return parseGeminiJson(raw);
+        } catch (e) {
+            console.warn('Gemini field parse failed, using local', e);
+            return null;
+        }
+    }
+
+    async function interpretAnswer(field, spokenText, numeric) {
+        const trimmed = (spokenText || '').trim();
+        if (isSkipPhrase(trimmed)) return { skip: true, value: numeric ? 0 : '' };
+
+        if (numeric) {
+            const n = extractSpokenNumber(trimmed);
+            if (n != null && !isNaN(n)) return { skip: false, value: n };
+        }
+
+        // Gemini when available for cleaner extraction
+        const ai = await parseFieldWithGemini(field, trimmed);
+        if (ai) {
+            if (ai.skip) return { skip: true, value: numeric ? 0 : '' };
+            if (numeric) {
+                const n = typeof ai.value === 'number' ? ai.value : extractSpokenNumber(String(ai.value));
+                return { skip: false, value: n != null && !isNaN(n) ? n : 0 };
+            }
+            if (ai.value != null && String(ai.value).trim()) {
+                return { skip: false, value: String(ai.value).trim() };
+            }
+        }
+
+        if (numeric) return { skip: false, value: 0 };
+        return { skip: false, value: trimmed };
+    }
+
+    function abortRecognition() {
+        const rec = voiceSession.recognition;
+        voiceSession.recognition = null;
+        if (!rec) return;
+        try {
+            rec.onresult = null;
+            rec.onerror = null;
+            rec.onend = null;
+            rec.stop();
+        } catch (e) {
+            try { rec.abort(); } catch (e2) { /* ignore */ }
+        }
+    }
+
+    function resetVoiceSessionState() {
+        abortRecognition();
+        stopSpeechSynth();
+        voiceSession.active = false;
+        voiceSession.stepIndex = 0;
+        voiceSession.draft = {};
+        voiceSession.phase = 'idle';
+        voiceSession.holding = false;
+        voiceSession.transcript = '';
+        updateVoiceButtonUI();
+    }
+
+    function cancelVoiceSession() {
+        resetVoiceSessionState();
+        setVoiceStatus(t('voiceCancelled'), 5000);
+    }
+
+    async function beginGuidedFlow() {
         const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SR) {
             setVoiceStatus(t('voiceUnsupported'), 8000);
             return;
         }
-        const btn = document.getElementById('voiceBtn');
-        const rec = new SR();
-        rec.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
-        rec.interimResults = false;
-        rec.maxAlternatives = 1;
-        rec.continuous = false;
-
-        setVoiceStatus(t('voiceListening'));
-        btn.classList.add('animate-pulse');
-        btn.disabled = true;
-
-        rec.onresult = async (e) => {
-            const text = e.results[0][0].transcript || '';
-            setVoiceStatus(t('voiceParsing') + ' «' + text + '»');
-            try {
-                await processVoiceWithGemini(text);
-            } catch (err) {
-                console.error('Voice/Gemini error', err);
-                const detail = formatGeminiError(err);
-                const msg = (err.message === 'NO_KEY' || err.geminiDetail === t('noApiKey'))
-                    ? t('noApiKey')
-                    : (t('apiError') + ' — ' + detail);
-                setVoiceStatus(msg, 12000);
-            } finally {
-                btn.classList.remove('animate-pulse');
-                btn.disabled = false;
-            }
-        };
-        rec.onerror = (ev) => {
-            console.error('SpeechRecognition error', ev);
-            setVoiceStatus(t('voiceError') + (ev && ev.error ? ' (' + ev.error + ')' : ''), 8000);
-            btn.classList.remove('animate-pulse');
-            btn.disabled = false;
-        };
-        rec.onend = () => {
-            btn.classList.remove('animate-pulse');
-            btn.disabled = false;
-        };
-        rec.start();
+        // Gemini optional for parsing — flow works with local heuristics too
+        resetVoiceSessionState();
+        voiceSession.active = true;
+        voiceSession.stepIndex = 0;
+        voiceSession.draft = { name: '', phone: '', proc: '', due: 0, paid: 0, teeth: [] };
+        setVoiceStatus(t('voiceStarting'));
+        await askCurrentStep();
     }
 
-    async function processVoiceWithGemini(spokenText) {
-        const raw = await callGemini(buildPatientPrompt(spokenText));
-        let data;
-        try {
-            data = parseGeminiJson(raw);
-        } catch (e) {
-            console.warn('JSON parse failed, fallback', raw);
-            data = { name: spokenText.slice(0, 40), phone: '', proc: t('procExam'), due: 0, paid: 0, teeth: [] };
+    async function askCurrentStep() {
+        if (!voiceSession.active) return;
+        const step = VOICE_STEPS[voiceSession.stepIndex];
+        if (!step) {
+            await finishGuidedRecord();
+            return;
         }
-        const name = (data.name || '').trim() || (lang === 'ar' ? 'مريض' : 'Patient');
-        const phone = (data.phone || '').toString();
-        const proc = (data.proc || t('procExam')).toString();
-        const due = parseFloat(data.due) || 0;
-        const paid = parseFloat(data.paid) || 0;
-        let teeth = Array.isArray(data.teeth)
-            ? data.teeth.map(n => parseInt(n, 10)).filter(n => n >= 11 && n <= 48)
-            : [];
+        voiceSession.phase = 'speaking';
+        updateVoiceButtonUI();
+        const q = t(step.askKey);
+        setVoiceStatus('💬 ' + q);
+        await speakText(q);
+        if (!voiceSession.active) return;
+        voiceSession.phase = 'awaiting_answer';
+        updateVoiceButtonUI();
+        setVoiceStatus('💬 ' + q + ' — ' + t('voiceHoldToAnswer'));
+    }
+
+    let lastTouchPttAt = 0;
+
+    function voicePttDown(ev) {
+        if (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+        }
+        // Ignore synthetic mouse events after touch
+        if (ev && ev.type === 'touchstart') lastTouchPttAt = Date.now();
+        if (ev && ev.type === 'mousedown' && Date.now() - lastTouchPttAt < 600) return;
+        // Ignore right-click
+        if (ev && ev.type === 'mousedown' && ev.button !== 0) return;
+
+        if (voiceSession.phase === 'speaking' || voiceSession.phase === 'processing') return;
+
+        // Idle → start guided conversation (do not listen yet)
+        if (!voiceSession.active || voiceSession.phase === 'idle') {
+            beginGuidedFlow();
+            return;
+        }
+
+        // Awaiting answer → start push-to-talk listening
+        if (voiceSession.phase === 'awaiting_answer') {
+            startPttListening();
+        }
+    }
+
+    function voicePttUp(ev) {
+        if (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+        }
+        if (ev && ev.type === 'touchend') lastTouchPttAt = Date.now();
+        if (ev && (ev.type === 'mouseup' || ev.type === 'mouseleave') && Date.now() - lastTouchPttAt < 600) {
+            // touchend already handled; skip duplicate mouseup
+            if (!voiceSession.holding) return;
+        }
+        if (!voiceSession.holding && voiceSession.phase !== 'listening') return;
+        stopPttListeningAndProcess();
+    }
+
+    // Esc cancels guided voice session
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && voiceSession.active) {
+            cancelVoiceSession();
+        }
+    });
+
+    function startPttListening() {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) {
+            setVoiceStatus(t('voiceUnsupported'), 8000);
+            return;
+        }
+        abortRecognition();
+        voiceSession.holding = true;
+        voiceSession.transcript = '';
+        voiceSession.phase = 'listening';
+        voiceSession.pressToken++;
+        const token = voiceSession.pressToken;
+        updateVoiceButtonUI();
+        setVoiceStatus(t('voiceListening'));
+
+        const rec = new SR();
+        voiceSession.recognition = rec;
+        rec.lang = speechLang();
+        rec.interimResults = true;
+        rec.maxAlternatives = 1;
+        rec.continuous = true;
+
+        rec.onresult = (e) => {
+            if (token !== voiceSession.pressToken) return;
+            let finalText = '';
+            let interim = '';
+            for (let i = 0; i < e.results.length; i++) {
+                const r = e.results[i];
+                if (r.isFinal) finalText += r[0].transcript;
+                else interim += r[0].transcript;
+            }
+            if (finalText) voiceSession.transcript = (voiceSession.transcript + ' ' + finalText).trim();
+            const live = (voiceSession.transcript + ' ' + interim).trim();
+            if (live) setVoiceStatus(t('voiceListening') + ' «' + live + '»');
+        };
+
+        rec.onerror = (ev) => {
+            if (token !== voiceSession.pressToken) return;
+            // 'aborted' / 'no-speech' handled on release
+            if (ev.error === 'aborted') return;
+            console.warn('SpeechRecognition error', ev.error);
+            if (ev.error === 'not-allowed') {
+                setVoiceStatus(t('voiceError') + ' (mic permission)', 10000);
+                resetVoiceSessionState();
+            }
+        };
+
+        rec.onend = () => {
+            // Browser may auto-stop; if still holding, restart
+            if (token !== voiceSession.pressToken) return;
+            if (voiceSession.holding && voiceSession.phase === 'listening') {
+                try { rec.start(); } catch (e) { /* ignore restart fail */ }
+            }
+        };
+
+        try {
+            rec.start();
+        } catch (e) {
+            console.error(e);
+            setVoiceStatus(t('voiceError'), 8000);
+            voiceSession.holding = false;
+            voiceSession.phase = 'awaiting_answer';
+            updateVoiceButtonUI();
+        }
+    }
+
+    async function stopPttListeningAndProcess() {
+        if (!voiceSession.holding && voiceSession.phase !== 'listening') return;
+        voiceSession.holding = false;
+        const token = voiceSession.pressToken;
+        // Capture transcript; stop recognition
+        abortRecognition();
+
+        // Brief wait for final results that may still flush
+        await new Promise(r => setTimeout(r, 180));
+        if (token !== voiceSession.pressToken || !voiceSession.active) return;
+
+        const spoken = (voiceSession.transcript || '').trim();
+        const step = VOICE_STEPS[voiceSession.stepIndex];
+        if (!step) return;
+
+        if (!spoken) {
+            setVoiceStatus(t('voiceEmptyAnswer'));
+            voiceSession.phase = 'awaiting_answer';
+            updateVoiceButtonUI();
+            return;
+        }
+
+        voiceSession.phase = 'processing';
+        updateVoiceButtonUI();
+        setVoiceStatus(t('voiceParsing') + ' «' + spoken + '»');
+
+        try {
+            const result = await interpretAnswer(step.field, spoken, !!step.numeric);
+            if (!voiceSession.active) return;
+
+            if (result.skip && step.required) {
+                setVoiceStatus(t('voiceEmptyAnswer'));
+                voiceSession.phase = 'awaiting_answer';
+                updateVoiceButtonUI();
+                await speakText(t(step.askKey));
+                return;
+            }
+
+            if (result.skip) {
+                voiceSession.draft[step.field] = step.numeric ? 0 : '';
+                setVoiceStatus(t('voiceSkipped') + ': ' + step.field);
+            } else {
+                voiceSession.draft[step.field] = result.value;
+                setVoiceStatus(t('voiceGot') + ' ' + step.field + ': ' + result.value);
+            }
+
+            voiceSession.stepIndex++;
+            if (voiceSession.stepIndex >= VOICE_STEPS.length) {
+                await finishGuidedRecord();
+            } else {
+                await askCurrentStep();
+            }
+        } catch (err) {
+            console.error(err);
+            setVoiceStatus(t('apiError') + ' — ' + formatGeminiError(err), 10000);
+            voiceSession.phase = 'awaiting_answer';
+            updateVoiceButtonUI();
+        }
+    }
+
+    async function finishGuidedRecord() {
+        if (!voiceSession.active) return;
+        voiceSession.phase = 'processing';
+        updateVoiceButtonUI();
+        setVoiceStatus(t('voiceProcessing'));
+
+        const d = voiceSession.draft;
+        let name = (d.name || '').toString().trim();
+        if (!name) name = lang === 'ar' ? 'مريض' : 'Patient';
+        const phone = (d.phone || '').toString().trim();
+        let proc = (d.proc || '').toString().trim() || t('procExam');
+        const due = parseFloat(d.due) || 0;
+        const paid = parseFloat(d.paid) || 0;
 
         const existing = patients.find(p => p.name === name);
         const id = existing ? existing.id : nextId();
@@ -1554,15 +1935,33 @@ Spoken text:
         patients.push({
             uid, id, name, phone,
             date: new Date().toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-GB'),
-            proc, due, paid, teeth
+            proc, due, paid, teeth: []
         });
         persist();
         renderSchedule();
 
-        // Non-blocking feedback only — no alert, no forced teeth modal
-        const teethPart = teeth.length ? (' · FDI ' + teeth.join(', ')) : (' ' + t('markTeethHint'));
-        setVoiceStatus(t('voiceDone') + ': ' + name + teethPart, 8000);
+        const doneMsg = t('voiceDone') + ': ' + name + ' · ' + proc + ' · ' + t('due') + ' ' + due + ' / ' + t('paid') + ' ' + paid + ' ' + t('markTeethHint');
+        resetVoiceSessionState();
+        setVoiceStatus(doneMsg, 10000);
+        await speakText(
+            lang === 'ar'
+                ? ('تم حفظ سجل ' + name)
+                : ('Record saved for ' + name)
+        );
     }
+
+    // Prevent context menu / focus issues on long-press (mobile)
+    document.addEventListener('DOMContentLoaded', () => {
+        const btn = document.getElementById('voiceBtn');
+        if (btn) {
+            btn.addEventListener('contextmenu', e => e.preventDefault());
+        }
+    });
+    // Also bind if script runs after DOM ready
+    (function bindVoiceBtnContext() {
+        const btn = document.getElementById('voiceBtn');
+        if (btn) btn.addEventListener('contextmenu', e => e.preventDefault());
+    })();
 
     // ── CSV ───────────────────────────────────────────────────────────
     function exportCSV() {
@@ -1658,6 +2057,7 @@ Spoken text:
     fillModelSelects();
     setLang(lang);
     refreshApiStatus();
+    updateVoiceButtonUI();
     </script>
 </body>
 </html>
